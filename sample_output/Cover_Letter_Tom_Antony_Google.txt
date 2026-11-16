@@ -1,0 +1,15 @@
+Tom Antony
+tom.antony@email.com | +91 98765 43210
+November 16, 2026
+
+Dear Google Cloud AI Hiring Team at Google,
+
+I am writing to express my strong enthusiasm for the AI Software Engineer Intern position at Google. With a strong foundation in B.Tech in Artificial Intelligence & Data Science, XYZ Institute of Technology (CGPA: 8.9/10, Expected 2026) and hands-on expertise in Python, Gemini API, PyTorch, Streamlit, RESTful APIs, Git, Docker, Prompt Engineering, NLP, I am eager to contribute immediately to your team's mission.
+
+During my academic and practical coursework, I spearheaded projects such as CoverCraft AI (End-to-end LLM application for automated cover letter crafting), Multimodal Sentiment Analyzer using Transformer models with 92% accuracy, and Automated Document Summarizer with Streamlit.. Through this work, I developed robust problem-solving skills, implemented clean software architectures, and translated complex technical requirements into user-centric applications. The initiatives at Google resonate deeply with my passion for creating intelligent, scalable software solutions.
+
+I welcome the opportunity to discuss how my technical acumen, rapid learning agility, and dedication can support the AI Software Engineer Intern role at Google. Thank you for your time and consideration.
+
+Sincerely,
+
+Tom Antony
