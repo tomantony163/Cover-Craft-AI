@@ -4,8 +4,15 @@ Handles prompt construction, Google Gemini API interaction, and letter generatio
 """
 
 import os
+import ssl
+import time
 from datetime import datetime
 from typing import Dict, Tuple, Optional
+import certifi
+import requests
+
+# Ensure SSL certificate bundle is configured to avoid Windows OpenSSL truststore EOF errors
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
 # Attempt to import google-genai
 try:
@@ -68,30 +75,118 @@ Now, generate the complete, customized cover letter strictly under 300 words.
     return prompt
 
 
+def _generate_via_rest_api(
+    api_key: str,
+    prompt: str,
+    model_name: str = "gemini-3.5-flash-lite"
+) -> Tuple[bool, str, int]:
+    """
+    Direct HTTPS REST client using requests and certifi bundle.
+    Bypasses httpx/truststore OpenSSL handshake quirks on Windows.
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key.strip()
+    }
+    payload = {
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
+            }
+        ]
+    }
+    
+    last_err = ""
+    for attempt in range(2):
+        try:
+            resp = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=50,
+                verify=certifi.where()
+            )
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        letter_text = parts[0]["text"].strip()
+                        if letter_text.startswith("```"):
+                            lines = letter_text.splitlines()
+                            if lines and lines[0].startswith("```"):
+                                lines = lines[1:]
+                            if lines and lines[-1].startswith("```"):
+                                lines = lines[:-1]
+                            letter_text = "\n".join(lines).strip()
+                        wc = calculate_word_count(letter_text)
+                        return True, letter_text, wc
+                return False, "Gemini API returned an empty response. Please adjust inputs and try again.", 0
+            
+            error_data = {}
+            try:
+                error_data = resp.json().get("error", {})
+            except Exception:
+                pass
+            
+            error_msg = error_data.get("message", resp.text)
+            status_code = resp.status_code
+            
+            if status_code in (400, 401, 403) and ("API_KEY_INVALID" in error_msg or "API key not valid" in error_msg or "key" in error_msg.lower()):
+                return False, "Invalid API Key: The Gemini API key provided is not valid. Please check and re-enter your key from https://aistudio.google.com/apikey", 0
+            elif status_code == 429 or "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
+                return False, "Quota Exceeded: Your Gemini API quota limit was reached. Please wait a moment or try another model/key.", 0
+            elif status_code == 404 or "not found" in error_msg.lower():
+                return False, f"Model '{model_name}' was not recognized or unavailable for your key. Try selecting 'gemini-3.5-flash-lite' in the sidebar.", 0
+            else:
+                last_err = f"API Error ({status_code}): {error_msg}"
+                time.sleep(1)
+        except requests.exceptions.RequestException as e:
+            last_err = f"Network Connection Error: {str(e)}"
+            time.sleep(1)
+
+    return False, last_err or "Failed to connect to Gemini API. Please check your network connection.", 0
+
+
 def generate_cover_letter(
     api_key: str,
     applicant: Dict[str, str],
     job: Dict[str, str],
     tone: str = "Professional & Confident",
-    model_name: str = "gemini-2.5-flash"
+    model_name: str = "gemini-3.5-flash-lite"
 ) -> Tuple[bool, str, int]:
     """
     Calls Google Gemini AI to generate a personalized cover letter.
+    Employs robust SSL handling and automatic REST fallback for reliable Windows support.
     
     Returns:
         (success: bool, content_or_error_message: str, word_count: int)
     """
     if not api_key or not api_key.strip():
         return False, "Error: Gemini API key is missing. Please provide your API key in the sidebar or via .env file.", 0
-    
-    if not GENAI_AVAILABLE:
-        return False, "Error: The `google-genai` package is not installed. Please install it using `pip install google-genai`.", 0
 
     prompt = build_generation_prompt(applicant, job, tone)
 
+    # If google-genai package is not available, directly use the REST implementation
+    if not GENAI_AVAILABLE:
+        return _generate_via_rest_api(api_key, prompt, model_name)
+
     try:
+        # Create an SSL context using certifi with unexpected EOF tolerance
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        if hasattr(ssl, "OP_IGNORE_UNEXPECTED_EOF"):
+            ssl_ctx.options |= ssl.OP_IGNORE_UNEXPECTED_EOF
+            
+        http_options = types.HttpOptions(
+            client_args={"verify": ssl_ctx},
+            async_client_args={"verify": ssl_ctx}
+        )
+        
         # Initialize Google GenAI client
-        client = genai.Client(api_key=api_key.strip())
+        client = genai.Client(api_key=api_key.strip(), http_options=http_options)
         
         # Call the Gemini model
         response = client.models.generate_content(
@@ -118,14 +213,22 @@ def generate_cover_letter(
 
     except Exception as e:
         error_str = str(e)
+        
+        # For SSL, EOF, or connection errors, fall back to robust direct REST client
+        if any(term in error_str.lower() for term in ["ssl", "eof", "connecterror", "connection", "protocol"]):
+            return _generate_via_rest_api(api_key, prompt, model_name)
+        
         if "API_KEY_INVALID" in error_str or "API key not valid" in error_str:
             return False, "Invalid API Key: The Gemini API key provided is not valid. Please check and re-enter your key from https://aistudio.google.com/apikey", 0
         elif "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
             return False, "Quota Exceeded: Your Gemini API quota limit was reached. Please wait a moment or try another model/key.", 0
         elif "not found" in error_str.lower() or "404" in error_str:
-            # Fallback suggestion if specific model isn't available
-            return False, f"Model '{model_name}' was not recognized or unavailable for your key. Try selecting 'gemini-1.5-flash' in the sidebar.", 0
+            return False, f"Model '{model_name}' was not recognized or unavailable for your key. Try selecting 'gemini-3.5-flash-lite' in the sidebar.", 0
         else:
+            # Try REST as a final fallback
+            rest_success, rest_text, rest_wc = _generate_via_rest_api(api_key, prompt, model_name)
+            if rest_success:
+                return rest_success, rest_text, rest_wc
             return False, f"API Error ({type(e).__name__}): {error_str}", 0
 
 

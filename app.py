@@ -5,9 +5,13 @@ Built with Python, Streamlit, and Google Gemini AI.
 """
 
 import os
+import certifi
 import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
+
+# Ensure SSL certificates are properly resolved on Windows
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -171,9 +175,9 @@ with st.sidebar:
     st.markdown("#### 🧠 AI Configuration")
     selected_model = st.selectbox(
         "Gemini Model",
-        options=["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"],
+        options=["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.8-flash"],
         index=0,
-        help="gemini-2.5-flash delivers fast, high-quality, and cost-efficient results."
+        help="gemini-3.5-flash-lite delivers ultra-fast, high-quality, and reliable results."
     )
 
     selected_tone = st.selectbox(
