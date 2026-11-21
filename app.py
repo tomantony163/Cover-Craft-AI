@@ -147,20 +147,33 @@ with st.sidebar:
     st.caption("Configure AI Model & Generation Options")
     
     # 1. API Key Configuration
-    env_api_key = os.getenv("GEMINI_API_KEY", "")
-    api_key_input = st.text_input(
-        "Gemini API Key",
-        value=env_api_key,
-        type="password",
-        placeholder="AIzaSy...",
-        help="Enter your Google Gemini API key. You can get one for free at https://aistudio.google.com/apikey"
-    )
+    env_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    has_env_key = bool(env_api_key)
     
-    if api_key_input:
-        st.success("✅ API Key configured", icon="🔑")
+    if has_env_key:
+        st.success("API Key securely active (Backend)", icon="🔒")
+        with st.expander("🔑 Change / Override API Key"):
+            custom_key = st.text_input(
+                "Custom Gemini API Key",
+                value="",
+                type="password",
+                placeholder="AIzaSy... (leave blank to use server key)",
+                help="Optional: Enter a different key to override the server environment key."
+            )
+        api_key_input = custom_key.strip() if custom_key.strip() else env_api_key
     else:
-        st.info("💡 Enter your Gemini API key above or toggle Demo Mode below.", icon="ℹ️")
-        st.markdown("[Get a free Gemini API key →](https://aistudio.google.com/apikey)")
+        api_key_input = st.text_input(
+            "Gemini API Key",
+            value="",
+            type="password",
+            placeholder="AIzaSy...",
+            help="Enter your Google Gemini API key. You can get one for free at https://aistudio.google.com/apikey"
+        )
+        if api_key_input:
+            st.success("✅ API Key configured", icon="🔑")
+        else:
+            st.info("💡 Enter your Gemini API key above or toggle Demo Mode below.", icon="ℹ️")
+            st.markdown("[Get a free Gemini API key →](https://aistudio.google.com/apikey)")
 
     # 2. Demo Mode Toggle (for testing without API key)
     demo_mode = st.checkbox(
